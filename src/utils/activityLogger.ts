@@ -2,7 +2,7 @@ export interface ActivityLog {
   id: string;
   action: string;
   taskId: string;
-  timestamps: Date;
+  timestamp: Date;
   details: string;
 }
 
