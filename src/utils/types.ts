@@ -13,7 +13,7 @@ export interface Task {
   progress: number;
 }
 
-interface Column {
+export interface Column {
   id: string;
   title: string;
   tasks: Task[];
@@ -68,4 +68,10 @@ export interface TimeLog {
   taskId: string;
   startTime: Date;
   endTime?: Date;
+}
+
+export interface TaskEditorProps {
+  task: Task;
+  onSave: (task: Task) => void;
+  onCancel: () => void;
 }

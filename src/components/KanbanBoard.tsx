@@ -3,11 +3,17 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Clock } from "lucide-react";
 
-import { BoardState } from "@/utils/types";
-import { ActivityLog, getActivityLogs } from "@/utils/activityLogger";
+import { BoardState, Column, Task } from "@/utils/types";
+import {
+  ActivityLog,
+  getActivityLogs,
+  logActivity,
+} from "@/utils/activityLogger";
+
 import { BoardHeader } from "./board/BoardHeader";
 import { TaskAnalytics } from "./TaskAnalytics";
 import { BoardColumn } from "./board/BoardColumn";
+
 import {
   exportBoard,
   handleKeyboardShortcut,
@@ -41,11 +47,19 @@ export const KanbanBoard = () => {
       }));
     }
     setActivityLogs(getActivityLogs());
-  });
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(boardState.present));
   }, [boardState.present]);
+
+  const pushToHistory = (newPresent: Column[]) => {
+    setBoardState((prev) => ({
+      past: [...prev.past, prev.present].slice(-MAX_HISTORY),
+      present: newPresent,
+      future: [],
+    }));
+  };
 
   const handleUndo = () => {
     if (boardState.past.length === 0) return;
@@ -67,6 +81,100 @@ export const KanbanBoard = () => {
       future: prev.future.slice(1),
     }));
     toast.info("Action redone");
+  };
+
+  const handleDragEnd = (result: DropResult) => {
+    if (!result.destination) return;
+
+    const { source, destination } = result;
+
+    if (source.droppableId === destination.droppableId) {
+      const column = boardState.present.find(
+        (col) => col.id === source.droppableId
+      );
+      if (!column) return;
+
+      const newTasks = Array.from(column.tasks);
+      const [removed] = newTasks.splice(source.index, 1);
+      newTasks.splice(destination.index, 0, removed);
+
+      pushToHistory(
+        boardState.present.map((col) =>
+          col.id === source.droppableId ? { ...col, tasks: newTasks } : col
+        )
+      );
+    } else {
+      const sourceColumn = boardState.present.find(
+        (col) => col.id === source.droppableId
+      );
+      const destColumn = boardState.present.find(
+        (col) => col.id === destination.droppableId
+      );
+
+      if (!sourceColumn || !destColumn) return;
+
+      const sourceTasks = Array.from(sourceColumn.tasks);
+      const destTasks = Array.from(destColumn.tasks);
+      const [removed] = sourceTasks.splice(source.index, 1);
+      destTasks.splice(destination.index, 0, removed);
+
+      pushToHistory(
+        boardState.present.map((col) => {
+          if (col.id === source.droppableId) {
+            return {
+              ...col,
+              tasks: sourceTasks,
+            };
+          }
+          if (col.id === destination.droppableId) {
+            return {
+              ...col,
+              tasks: destTasks,
+            };
+          }
+          return col;
+        })
+      );
+    }
+  };
+
+  const handleTaskCreate = (task: Task) => {
+    const totalTasks = boardState.present.reduce(
+      (sum, col) => sum + col.tasks.length,
+      0
+    );
+    if (totalTasks >= MAX_TASKS) {
+      toast.error("Maximum limit of 5 tasks reached!");
+      return;
+    }
+
+    const newColumns = boardState.present.map((col) =>
+      col.id === "todo" ? { ...col, tasks: [task, ...col.tasks] } : col
+    );
+
+    pushToHistory(newColumns);
+    logActivity("create", task.id, `Created task: ${task.title}`);
+    toast.success("Task Created Successfully");
+  };
+
+  const handleTaskDelete = (taskId: string) => {
+    const newColumns = boardState.present.map((col) => ({
+      ...col,
+      tasks: col.tasks.filter((t) => t.id !== taskId),
+    }));
+
+    pushToHistory(newColumns);
+    logActivity("delete", taskId, `Deleted task with ID: ${taskId}`);
+  };
+
+  const handleTaskEdit = (taskId: string, updatedTask: Task) => {
+    const newColumns = boardState.present.map((col) => ({
+      ...col,
+      tasks: col.tasks.map((t) => (t.id === taskId ? updatedTask : t)),
+    }));
+
+    pushToHistory(newColumns);
+    logActivity("edit", taskId, `Edited task: ${updatedTask.title}`);
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
